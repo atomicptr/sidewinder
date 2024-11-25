@@ -2,21 +2,11 @@ package config
 
 import (
 	"io"
+	"log"
 	"time"
 
 	"github.com/BurntSushi/toml"
 )
-
-type WebhookType = string
-
-const (
-	DiscordType WebhookType = "discord"
-)
-
-type Webhook struct {
-	Type WebhookType `toml:"type"`
-	Url  string      `toml:"url"`
-}
 
 type Group struct {
 	Name     string    `toml:"name"`
@@ -47,4 +37,15 @@ func Read(r io.Reader) (*Config, error) {
 	// TODO: validate config
 
 	return &config, nil
+}
+
+func (c *Config) FindGroup(name string) Group {
+	for _, g := range c.Groups {
+		if g.Name == name {
+			return g
+		}
+	}
+
+	log.Fatalf("could not find group: %s", name)
+	return Group{}
 }

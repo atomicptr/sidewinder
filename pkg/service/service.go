@@ -53,7 +53,7 @@ func tick(config *config.Config, dataDir string) error {
 			continue
 		}
 
-		err = notifyGroup(config, feed.Group, newItems)
+		err = notifyGroup(config, feed, newItems)
 		if err != nil {
 			log.Printf("notify error %s: could not notify group: %s\n", feed.Group, err)
 			continue
@@ -87,8 +87,22 @@ func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) []*g
 	return newItems
 }
 
-func notifyGroup(config *config.Config, groupName string, items []*gofeed.Item) error {
-	log.Println(groupName, items)
+func notifyGroup(config *config.Config, feed config.Feed, items []*gofeed.Item) error {
+	g := config.FindGroup(feed.Group)
+
+	for _, hook := range g.Webhooks {
+		for _, item := range items {
+			log.Printf("notify group %s about %s - %s\n", feed.Group, item.Title, item.Link)
+			err := hook.Fire(feed, item.Title, item.Description, item.Link, *item.PublishedParsed)
+			if err != nil {
+				log.Printf("notify group %s error: %s\n", g.Name, err)
+			}
+
+			// sleep between every request to not get rate limited
+			time.Sleep(1 * time.Second)
+		}
+	}
+
 	return nil
 }
 
