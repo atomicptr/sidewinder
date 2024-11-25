@@ -35,7 +35,7 @@ var runCommand = &cobra.Command{
 		}
 
 		if dataDir == "" {
-			dataDir = os.Getenv("SIDEWINDER_CONFIG_FILE")
+			dataDir = os.Getenv("SIDEWINDER_DATA_DIR")
 		}
 
 		if dataDir == "" {
