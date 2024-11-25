@@ -1,0 +1,12 @@
+tick-rate = "30m"
+
+[[groups]]
+name = "alerts"
+webhooks = [
+  { type = "discord", url = "https://discord.com/api/webhooks/..." }
+]
+
+[[feeds]]
+name = "NixOS Unstable Updates"
+url = "https://github.com/NixOS/nixpkgs/commits/nixos-unstable.atom"
+group = "alerts"

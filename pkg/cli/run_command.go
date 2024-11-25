@@ -51,7 +51,7 @@ var runCommand = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		err := os.MkdirAll(dataDir, 0o644)
+		err := os.MkdirAll(dataDir, 0o755)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -1,8 +1,14 @@
 package service
 
 import (
+	"crypto/md5"
 	"fmt"
+	"io"
 	"log"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/atomicptr/sidewinder/pkg/config"
@@ -11,8 +17,6 @@ import (
 )
 
 func Run(config *config.Config, dataDir string) error {
-	fmt.Println(config)
-
 	ticker := time.NewTicker(config.TickRate)
 
 	err := tick(config, dataDir)
@@ -42,7 +46,7 @@ func tick(config *config.Config, dataDir string) error {
 			continue
 		}
 
-		newItems := filterNewItems(dataDir, f)
+		newItems := filterNewItems(dataDir, feed, f)
 
 		if len(newItems) == 0 {
 			log.Printf("feed %s: %s has no new items", feed.Name, feed.Url)
@@ -55,9 +59,9 @@ func tick(config *config.Config, dataDir string) error {
 			continue
 		}
 
-		err = markItemsAsPosted(dataDir, newItems)
+		err = markItemsAsPosted(dataDir, feed)
 		if err != nil {
-			log.Printf("feed %s: could not mark %d items as read", feed.Name, len(newItems))
+			log.Printf("feed %s: could not mark %d items as read: %s", feed.Name, len(newItems), err)
 			continue
 		}
 	}
@@ -65,14 +69,75 @@ func tick(config *config.Config, dataDir string) error {
 	return nil
 }
 
-func filterNewItems(dataDir string, feed *gofeed.Feed) []*gofeed.Item {
-	return nil
+func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) []*gofeed.Item {
+	var newItems []*gofeed.Item
+
+	t := lastItemPostedTime(dataDir, feed)
+
+	for _, f := range rssFeed.Items {
+		if t.After(*f.PublishedParsed) {
+			continue
+		}
+
+		log.Printf("%s: found new item: %s - %s\n", feed.Name, f.Title, f.Link)
+
+		newItems = append(newItems, f)
+	}
+
+	return newItems
 }
 
 func notifyGroup(config *config.Config, groupName string, items []*gofeed.Item) error {
+	log.Println(groupName, items)
 	return nil
 }
 
-func markItemsAsPosted(dataDir string, items []*gofeed.Item) error {
-	return nil
+func markItemsAsPosted(dataDir string, feed config.Feed) error {
+	p := feedTimePath(dataDir, feed)
+	f, err := os.Create(p)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			log.Println("could not close file: ", p, err)
+		}
+	}()
+
+	data := []byte(strconv.FormatInt(time.Now().Unix(), 10))
+
+	_, err = f.Write(data)
+	return err
+}
+
+func feedTimePath(dataDir string, feed config.Feed) string {
+	h := md5.New()
+	io.WriteString(h, feed.Url)
+	ident := fmt.Sprintf("%x", h.Sum(nil))
+
+	return filepath.Join(dataDir, ident)
+}
+
+func lastItemPostedTime(dataDir string, feed config.Feed) time.Time {
+	p := feedTimePath(dataDir, feed)
+
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		log.Printf("feed item: %s does not exist\n", p)
+		return time.Now() // item does not exist so latest was now
+	}
+
+	data, err := os.ReadFile(p)
+	if err != nil {
+		log.Printf("feed item: %s could not be read\n", p)
+		return time.Now() // cant read file?
+	}
+
+	ts, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		log.Printf("feed item: %s contains invalid data\n", p)
+		return time.Now()
+	}
+
+	return time.Unix(ts, 0)
 }
