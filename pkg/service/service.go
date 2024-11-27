@@ -50,6 +50,13 @@ func tick(config *config.Config, dataDir string) error {
 
 		if len(newItems) == 0 {
 			log.Printf("feed %s: %s has no new items", feed.Name, feed.Url)
+
+			// when nothing was available still mark current time as posted
+			err = markItemsAsPosted(dataDir, feed)
+			if err != nil {
+				log.Printf("feed %s: could not mark %d items as read: %s", feed.Name, len(newItems), err)
+				continue
+			}
 			continue
 		}
 
