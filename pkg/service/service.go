@@ -46,17 +46,10 @@ func tick(config *config.Config, dataDir string) error {
 			continue
 		}
 
-		newItems := filterNewItems(dataDir, feed, f)
+		newItems, t := filterNewItems(dataDir, feed, f)
 
 		if len(newItems) == 0 {
 			log.Printf("feed %s: %s has no new items", feed.Name, feed.Url)
-
-			// when nothing was available still mark current time as posted
-			err = markItemsAsPosted(dataDir, feed)
-			if err != nil {
-				log.Printf("feed %s: could not mark %d items as read: %s", feed.Name, len(newItems), err)
-				continue
-			}
 			continue
 		}
 
@@ -66,7 +59,7 @@ func tick(config *config.Config, dataDir string) error {
 			continue
 		}
 
-		err = markItemsAsPosted(dataDir, feed)
+		err = markItemsAsPosted(dataDir, feed, t)
 		if err != nil {
 			log.Printf("feed %s: could not mark %d items as read: %s", feed.Name, len(newItems), err)
 			continue
@@ -76,10 +69,13 @@ func tick(config *config.Config, dataDir string) error {
 	return nil
 }
 
-func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) []*gofeed.Item {
+func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) ([]*gofeed.Item, time.Time) {
 	var newItems []*gofeed.Item
 
-	t := lastItemPostedTime(dataDir, feed)
+	t, err := lastItemPostedTime(dataDir, feed)
+	if err != nil {
+		t = time.Now()
+	}
 
 	for _, f := range rssFeed.Items {
 		if t.After(*f.PublishedParsed) {
@@ -91,7 +87,7 @@ func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) []*g
 		newItems = append(newItems, f)
 	}
 
-	return newItems
+	return newItems, t
 }
 
 func notifyGroup(config *config.Config, feed config.Feed, items []*gofeed.Item) error {
@@ -113,7 +109,7 @@ func notifyGroup(config *config.Config, feed config.Feed, items []*gofeed.Item) 
 	return nil
 }
 
-func markItemsAsPosted(dataDir string, feed config.Feed) error {
+func markItemsAsPosted(dataDir string, feed config.Feed, t time.Time) error {
 	p := feedTimePath(dataDir, feed)
 	f, err := os.Create(p)
 	if err != nil {
@@ -126,7 +122,7 @@ func markItemsAsPosted(dataDir string, feed config.Feed) error {
 		}
 	}()
 
-	data := []byte(strconv.FormatInt(time.Now().Unix(), 10))
+	data := []byte(strconv.FormatInt(t.Unix(), 10))
 
 	_, err = f.Write(data)
 	return err
@@ -140,25 +136,25 @@ func feedTimePath(dataDir string, feed config.Feed) string {
 	return filepath.Join(dataDir, ident)
 }
 
-func lastItemPostedTime(dataDir string, feed config.Feed) time.Time {
+func lastItemPostedTime(dataDir string, feed config.Feed) (time.Time, error) {
 	p := feedTimePath(dataDir, feed)
 
 	if _, err := os.Stat(p); os.IsNotExist(err) {
 		log.Printf("feed item: %s does not exist\n", p)
-		return time.Now() // item does not exist so latest was now
+		return time.Time{}, err // item does not exist so latest was now
 	}
 
 	data, err := os.ReadFile(p)
 	if err != nil {
 		log.Printf("feed item: %s could not be read\n", p)
-		return time.Now() // cant read file?
+		return time.Time{}, err // cant read file?
 	}
 
 	ts, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 	if err != nil {
 		log.Printf("feed item: %s contains invalid data\n", p)
-		return time.Now()
+		return time.Time{}, err
 	}
 
-	return time.Unix(ts, 0)
+	return time.Unix(ts, 0), nil
 }
