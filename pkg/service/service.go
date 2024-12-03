@@ -124,6 +124,8 @@ func markItemsAsPosted(dataDir string, feed config.Feed, t time.Time) error {
 
 	data := []byte(strconv.FormatInt(t.Unix(), 10))
 
+	log.Printf("marked feed %s as posted for %s\n", p, string(data))
+
 	_, err = f.Write(data)
 	return err
 }
