@@ -72,9 +72,11 @@ func tick(config *config.Config, dataDir string) error {
 func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) ([]*gofeed.Item, time.Time) {
 	var newItems []*gofeed.Item
 
+	current := time.Now()
+
 	t, err := lastItemPostedTime(dataDir, feed)
 	if err != nil {
-		t = time.Now()
+		t = current
 	}
 
 	for _, f := range rssFeed.Items {
@@ -87,7 +89,7 @@ func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) ([]*
 		newItems = append(newItems, f)
 	}
 
-	return newItems, t
+	return newItems, current
 }
 
 func notifyGroup(config *config.Config, feed config.Feed, items []*gofeed.Item) error {
