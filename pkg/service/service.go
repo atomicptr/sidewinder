@@ -50,19 +50,16 @@ func tick(config *config.Config, dataDir string) error {
 
 		if len(newItems) == 0 {
 			log.Printf("feed %s: %s has no new items", feed.Name, feed.Url)
-			continue
-		}
-
-		err = notifyGroup(config, feed, newItems)
-		if err != nil {
-			log.Printf("notify error %s: could not notify group: %s\n", feed.Group, err)
-			continue
+		} else {
+			err = notifyGroup(config, feed, newItems)
+			if err != nil {
+				log.Printf("notify error %s: could not notify group: %s\n", feed.Group, err)
+			}
 		}
 
 		err = markItemsAsPosted(dataDir, feed, t)
 		if err != nil {
-			log.Printf("feed %s: could not mark %d items as read: %s", feed.Name, len(newItems), err)
-			continue
+			log.Printf("feed %s: could not mark items as posted: %s", feed.Name, err)
 		}
 	}
 
@@ -92,20 +89,38 @@ func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) ([]*
 	return newItems, current
 }
 
-func notifyGroup(config *config.Config, feed config.Feed, items []*gofeed.Item) error {
-	g := config.FindGroup(feed.Group)
+func notifyGroup(cfg *config.Config, feed config.Feed, items []*gofeed.Item) error {
+	g := cfg.FindGroup(feed.Group)
 
 	for _, hook := range g.Webhooks {
-		for _, item := range items {
+		if len(items) == 1 {
+			item := items[0]
 			log.Printf("notify group %s about %s - %s\n", feed.Group, item.Title, item.Link)
 			err := hook.Fire(feed, item.Title, item.Description, item.Link, *item.PublishedParsed)
 			if err != nil {
 				log.Printf("notify group %s error: %s\n", g.Name, err)
 			}
 
-			// sleep between every request to not get rate limited
-			time.Sleep(1 * time.Second)
+			continue
 		}
+
+		var batchItems []config.ItemData
+		for _, item := range items {
+			log.Printf("notify group %s about %s - %s\n", feed.Group, item.Title, item.Link)
+			batchItems = append(batchItems, config.ItemData{
+				Title:       item.Title,
+				Description: item.Description,
+				URL:         item.Link,
+				Published:   *item.PublishedParsed,
+			})
+		}
+
+		err := hook.FireBatch(feed, batchItems)
+		if err != nil {
+			log.Printf("notify group %s error: %s\n", g.Name, err)
+		}
+
+		time.Sleep(1 * time.Second)
 	}
 
 	return nil
