@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -6,7 +6,7 @@ ADD . /app
 
 RUN go build cmd/sidewinder/main.go
 
-FROM alpine:3.20
+FROM alpine:3.23
 
 ENV SIDEWINDER_CONFIG_FILE="/app/sidewinder.toml"
 ENV SIDEWINDER_DATA_DIR="/data"
