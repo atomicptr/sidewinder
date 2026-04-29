@@ -16,8 +16,8 @@ This service is mostly configured through a TOML file, see the example file "sid
 
 There are also a few environment variables:
 
-- **SIDEWINDER_CONFIG_FILE**: Path to the config file
 - **SIDEWINDER_DATA_DIR**: Path to the data dir
+- **SIDEWINDER_CONFIG_FILE**: Path to the config file
 - **SIDEWINDER_TICK_RATE**: Tick rate (example `30m`)
 
 ## License
