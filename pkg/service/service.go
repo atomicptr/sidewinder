@@ -46,7 +46,11 @@ func tick(config *config.Config, dataDir string) error {
 			continue
 		}
 
-		newItems, t := filterNewItems(dataDir, feed, f)
+		newItems, t, shouldMark, err := filterNewItems(dataDir, feed, f)
+		if err != nil {
+			log.Printf("feed %s: could not determine last posted time: %s\n", feed.Name, err)
+			continue
+		}
 
 		if len(newItems) == 0 {
 			log.Printf("feed %s: %s has no new items", feed.Name, feed.Url)
@@ -54,7 +58,12 @@ func tick(config *config.Config, dataDir string) error {
 			err = notifyGroup(config, feed, newItems)
 			if err != nil {
 				log.Printf("notify error %s: could not notify group: %s\n", feed.Group, err)
+				continue
 			}
+		}
+
+		if !shouldMark {
+			continue
 		}
 
 		err = markItemsAsPosted(dataDir, feed, t)
@@ -66,31 +75,49 @@ func tick(config *config.Config, dataDir string) error {
 	return nil
 }
 
-func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) ([]*gofeed.Item, time.Time) {
+func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) ([]*gofeed.Item, time.Time, bool, error) {
 	var newItems []*gofeed.Item
 
-	current := time.Now()
-
-	t, err := lastItemPostedTime(dataDir, feed)
+	lastPosted, err := lastItemPostedTime(dataDir, feed)
 	if err != nil {
-		t = current
+		if os.IsNotExist(err) {
+			return newItems, time.Now(), true, nil
+		}
+
+		return nil, time.Time{}, false, err
 	}
 
+	latestPosted := lastPosted
+
 	for _, f := range rssFeed.Items {
-		if t.After(*f.PublishedParsed) {
+		if f.PublishedParsed == nil {
+			log.Printf("%s: skipping item with no published time: %s - %s\n", feed.Name, f.Title, f.Link)
+			continue
+		}
+
+		if lastPosted.After(*f.PublishedParsed) {
 			continue
 		}
 
 		log.Printf("%s: found new item: %s - %s\n", feed.Name, f.Title, f.Link)
 
 		newItems = append(newItems, f)
+
+		if f.PublishedParsed.After(latestPosted) {
+			latestPosted = *f.PublishedParsed
+		}
 	}
 
-	return newItems, current
+	if len(newItems) == 0 {
+		return nil, time.Time{}, false, nil
+	}
+
+	return newItems, latestPosted, true, nil
 }
 
 func notifyGroup(cfg *config.Config, feed config.Feed, items []*gofeed.Item) error {
 	g := cfg.FindGroup(feed.Group)
+	var notifyErr error
 
 	for _, hook := range g.Webhooks {
 		if len(items) == 1 {
@@ -99,6 +126,9 @@ func notifyGroup(cfg *config.Config, feed config.Feed, items []*gofeed.Item) err
 			err := hook.Fire(feed, item.Title, item.Description, item.Link, *item.PublishedParsed)
 			if err != nil {
 				log.Printf("notify group %s error: %s\n", g.Name, err)
+				if notifyErr == nil {
+					notifyErr = err
+				}
 			}
 
 			continue
@@ -118,12 +148,15 @@ func notifyGroup(cfg *config.Config, feed config.Feed, items []*gofeed.Item) err
 		err := hook.FireBatch(feed, batchItems)
 		if err != nil {
 			log.Printf("notify group %s error: %s\n", g.Name, err)
+			if notifyErr == nil {
+				notifyErr = err
+			}
 		}
 
 		time.Sleep(1 * time.Second)
 	}
 
-	return nil
+	return notifyErr
 }
 
 func markItemsAsPosted(dataDir string, feed config.Feed, t time.Time) error {

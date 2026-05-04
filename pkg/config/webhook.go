@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -81,19 +82,7 @@ func (wh *Webhook) FireBatch(feed Feed, items []ItemData) error {
 
 	log.Println(string(data))
 
-	res, err := http.Post(wh.Url, "application/json", bytes.NewBuffer(data))
-	if err != nil {
-		return err
-	}
-
-	d, err := io.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("%d - response: %s\n", res.StatusCode, string(d))
-
-	return nil
+	return postDiscord(wh.Url, data)
 }
 
 type discordAuthor struct {
@@ -162,10 +151,20 @@ func (wh *Webhook) fireDiscord(feed Feed, title, description, url string, ts tim
 
 	log.Println(string(data))
 
-	res, err := http.Post(wh.Url, "application/json", bytes.NewBuffer(data))
+	return postDiscord(wh.Url, data)
+}
+
+func postDiscord(url string, data []byte) error {
+	res, err := http.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err := res.Body.Close()
+		if err != nil {
+			log.Printf("could not close webhook response body: %s\n", err)
+		}
+	}()
 
 	d, err := io.ReadAll(res.Body)
 	if err != nil {
@@ -173,6 +172,9 @@ func (wh *Webhook) fireDiscord(feed Feed, title, description, url string, ts tim
 	}
 
 	log.Printf("%d - response: %s\n", res.StatusCode, string(d))
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("discord webhook returned %d: %s", res.StatusCode, strings.TrimSpace(string(d)))
+	}
 
 	return nil
 }
