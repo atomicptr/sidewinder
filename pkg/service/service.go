@@ -95,7 +95,7 @@ func filterNewItems(dataDir string, feed config.Feed, rssFeed *gofeed.Feed) ([]*
 			continue
 		}
 
-		if lastPosted.After(*f.PublishedParsed) {
+		if !f.PublishedParsed.After(lastPosted) {
 			continue
 		}
 

@@ -126,6 +126,52 @@ func TestTickPostsBackdatedItemsAfterEmptyPoll(t *testing.T) {
 	}
 }
 
+func TestTickDoesNotRepostItemAtCursorBoundary(t *testing.T) {
+	feedServer, setItems := newFeedServer(t)
+	defer feedServer.Close()
+
+	webhookServer, webhookCalls := newWebhookServer(http.StatusNoContent)
+	defer webhookServer.Close()
+
+	feed := config.Feed{Name: "Test Feed", Url: feedServer.URL, Group: "test"}
+	dataDir := t.TempDir()
+	initial := time.Date(2024, time.January, 10, 12, 0, 0, 0, time.UTC)
+
+	if err := markItemsAsPosted(dataDir, feed, initial); err != nil {
+		t.Fatalf("markItemsAsPosted() error = %v", err)
+	}
+
+	setItems([]testFeedItem{{
+		Title:     "Boundary post",
+		Link:      "https://example.com/boundary",
+		Published: initial,
+	}})
+
+	cfg := &config.Config{
+		Groups: []config.Group{{
+			Name: "test",
+			Webhooks: []config.Webhook{{
+				Type: config.DiscordType,
+				Url:  webhookServer.URL,
+			}},
+		}},
+		Feeds: []config.Feed{feed},
+	}
+
+	if err := tick(cfg, dataDir); err != nil {
+		t.Fatalf("tick() error = %v", err)
+	}
+
+	bodies := webhookCalls.Bodies()
+	if len(bodies) != 0 {
+		t.Fatalf("webhook call count = %d, want 0", len(bodies))
+	}
+
+	if got := readPostedTime(t, dataDir, feed); !got.Equal(initial) {
+		t.Fatalf("posted time = %v, want %v", got, initial)
+	}
+}
+
 func TestTickDoesNotAdvanceCursorWhenBatchWebhookFails(t *testing.T) {
 	feedServer, setItems := newFeedServer(t)
 	defer feedServer.Close()
