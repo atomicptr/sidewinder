@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/atomicptr/sidewinder/pkg/config"
+
+	"github.com/mmcdole/gofeed"
 )
 
 type testFeedItem struct {
@@ -169,6 +171,40 @@ func TestTickDoesNotRepostItemAtCursorBoundary(t *testing.T) {
 
 	if got := readPostedTime(t, dataDir, feed); !got.Equal(initial) {
 		t.Fatalf("posted time = %v, want %v", got, initial)
+	}
+}
+
+func TestFilterNewItemsSkipsItemAtSameUnixSecond(t *testing.T) {
+	dataDir := t.TempDir()
+	feed := config.Feed{Name: "Test Feed", Url: "https://example.com/feed", Group: "test"}
+
+	cursorTs := time.Unix(1704888000, 0)
+	if err := markItemsAsPosted(dataDir, feed, cursorTs); err != nil {
+		t.Fatalf("markItemsAsPosted() error = %v", err)
+	}
+
+	itemTs := time.Unix(1704888000, 500000000)
+	rssFeed := &gofeed.Feed{
+		Items: []*gofeed.Item{
+			{
+				Title:           "Sub-second boundary post",
+				Link:            "https://example.com/sub-second",
+				PublishedParsed: &itemTs,
+			},
+		},
+	}
+
+	items, _, shouldMark, err := filterNewItems(dataDir, feed, rssFeed)
+	if err != nil {
+		t.Fatalf("filterNewItems() error = %v", err)
+	}
+
+	if len(items) != 0 {
+		t.Fatalf("filterNewItems() returned %d items, want 0 (item at same Unix second should be skipped even with sub-second offset)", len(items))
+	}
+
+	if shouldMark {
+		t.Fatal("filterNewItems() returned shouldMark=true, want false (no items to mark)")
 	}
 }
 
